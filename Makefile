@@ -18,11 +18,13 @@ ASM_OBJS := \
 C_OBJS := \
 	kernel/arch/x86/gdt.o      \
 	kernel/arch/x86/idt.o      \
+	kernel/arch/x86/tss.o      \
 	kernel/arch/x86/irq_c.o    \
 	kernel/mm/pmm.o             \
 	kernel/mm/vmm.o             \
 	kernel/mm/kheap.o           \
 	kernel/proc/proc.o          \
+	kernel/proc/sched.o         \
 	kernel/drivers/serial.o     \
 	kernel/drivers/vga.o        \
 	kernel/drivers/timer.o      \
@@ -72,16 +74,14 @@ myos: $(OBJS)
 	@echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 	@$(CC) $(LDFLAGS) $(OBJS) -o myos -lgcc
 
-
 myos.iso: myos
 	@echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
 	@echo "┃                          Creating ISO                             ┃"
 	@echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 	@mkdir -p $(ISODIR)/grub
-	@cp myos         $(ISODIR)/myos
+	@cp myos          $(ISODIR)/myos
 	@cp boot/grub.cfg $(ISODIR)/grub/grub.cfg
 	@$(GRUB) -o myos.iso isodir
-
 
 run:
 	@echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"

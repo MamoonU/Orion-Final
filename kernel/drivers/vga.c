@@ -15,13 +15,14 @@ static uint16_t *terminal_buf = (uint16_t *)VGA_MEMORY;
 static inline uint8_t  vga_colour(vga_colour_t fg, vga_colour_t bg) { return fg | bg << 4; }
 static inline uint16_t vga_entry (unsigned char c, uint8_t colour)  { return (uint16_t)c | (uint16_t)colour << 8; }
 
-void terminal_initialize(void) {
+void terminal_init(void) {
     terminal_row    = 0;
     terminal_col    = 0;
     terminal_colour = vga_colour(VGA_COLOUR_LIGHT_GREY, VGA_COLOUR_BLACK);
     for (size_t y = 0; y < VGA_HEIGHT; y++)
         for (size_t x = 0; x < VGA_WIDTH; x++)
             terminal_buf[y * VGA_WIDTH + x] = vga_entry(' ', terminal_colour);
+    kprintf("Terminal: Initialised\n");
 }
 
 void terminal_setcolour(uint8_t colour) {

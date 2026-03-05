@@ -28,8 +28,9 @@ ISR_ERR   13    ; GP fault
 ISR_ERR   14    ; Page fault
 
 isr_common_stub:
-    pusha           ;save registers, preserve CPU state
-    push ds
+    pusha               ; save all GPRs
+
+    push ds             ; save segment registers
     push es
     push fs
     push gs
@@ -40,7 +41,7 @@ isr_common_stub:
     mov fs, ax
     mov gs, ax
 
-    push esp                ; pass pointer to stack
+    push esp            ; pass pointer to stack
     call isr_handler
     add esp, 4
 
@@ -48,8 +49,8 @@ isr_common_stub:
     pop fs
     pop es
     pop ds
+
     popa
 
-    add esp, 8      ; Pop error code + int number
-    sti
+    add esp, 8          ; Pop error code + int number
     iret

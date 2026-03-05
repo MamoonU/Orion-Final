@@ -1,9 +1,10 @@
 #include "gdt.h"
 #include "kprintf.h"
 
-extern void gdt_flush(uint32_t);                //gdt.asm
+extern void gdt_flush(uint32_t);                // gdt.asm
+extern void tss_flush(void);                    // gdt.asm
 
-static struct gdt_entry gdt[5];         // allocate gdt (5 entries = null, k-code, k-data, u-code, u-data)
+static struct gdt_entry gdt[6];         // allocate gdt (6 entries = null, k-code, k-data, u-code, u-data, TSS)
 static struct gdt_ptr   gdtp;           // allocate??? gdt registers
 
 static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {   // output = index, base, limit, access, granularity
@@ -23,13 +24,13 @@ static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access,
 void gdt_init(void) {
 
     gdtp.limit = (sizeof(struct gdt_entry) * 5) - 1;            // size - 1
-    gdtp.base = (uint32_t)&gdt;                               // base address (1 byte)
+    gdtp.base = (uint32_t)&gdt;                                 // base address (1 byte)
 
-    gdt_set_gate(0, 0, 0, 0, 0);                //null descriptor (required (i found out the hard way))
+    gdt_set_gate(0, 0, 0, 0x00, 0x00);                //null descriptor (required (i found out the hard way))
 
+    //          (num, base, limit, access, gran)
 
     // kernel = code segment (0x08)
-    //          (num, base, limit, access, gran)
     gdt_set_gate(1, 0, 0xFFFFFFFF, 0x9A, 0xCF);             // index = 1, base = 0, limit = 4GB, ring 0 - executable & readable, selector: 1 << 3 = 8 = 0x08
 
     // kernel = data segment (0x10)
@@ -47,5 +48,12 @@ void gdt_init(void) {
     // reload code segment -> far jump
 
     kprintf("GDT: Loaded\n");
+
+}
+
+void gdt_install_tss(uint32_t base, uint32_t limit) {
+
+    gdt_set_gate(5, base, limit, 0x89, 0x00);
+    gdt_flush((uint32_t)&gdtp);                             // reload GDTR so CPU sees the new entry
 
 }

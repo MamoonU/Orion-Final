@@ -32,4 +32,6 @@ struct gdt_ptr {
 
 void gdt_init(void);
 
+void gdt_install_tss(uint32_t base, uint32_t limit);
+
 #endif

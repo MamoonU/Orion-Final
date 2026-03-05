@@ -1,7 +1,7 @@
 #include "timer.h"
 #include "ioport.h"
 #include "irq.h"
-
+#include "sched.h"
 #include "serial.h"
 
 static volatile uint32_t tick_count = 0;
@@ -10,6 +10,7 @@ static volatile uint32_t tick_count = 0;
 void timer_handler(regs_t *r) {
     (void)r;                                    // pass CPU register state (future dev)
     tick_count++;
+    sched_tick();
 }
 
 uint32_t timer_get_ticks(void) {

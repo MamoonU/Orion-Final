@@ -1,9 +1,8 @@
-// Process Control Block — Orion OS
+// Process Control Block - Orion OS
 
 #include "proc.h"
 #include "kheap.h"
 #include "timer.h"
-
 #include "kprintf.h"
 #include "panic.h"
 #include "string.h"
@@ -17,7 +16,6 @@ static pid_t    pid_search_hint = 1;
 static inline void pid_bitmap_set(pid_t pid)   { pid_bitmap[pid/32] |=  (1u << (pid%32)); }
 static inline void pid_bitmap_clear(pid_t pid) { pid_bitmap[pid/32] &= ~(1u << (pid%32)); }
 static inline int  pid_bitmap_test(pid_t pid)  { return (pid_bitmap[pid/32] >> (pid%32)) & 1u; }
-
 
 void proc_init(void) {                                                                                  // initialise
 
@@ -106,44 +104,31 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
     p->state     = PROC_EMBRYO;
     p->exit_code = 0;
 
-    // CPU context
-    cpu_context_t *ctx = &p->context;
-    ctx->gs       = 0x10;           // kernel data segment
-    ctx->fs       = 0x10;
-    ctx->es       = 0x10;
-    ctx->ds       = 0x10;
-    ctx->edi      = 0;
-    ctx->esi      = 0;
-    ctx->ebp      = 0;
-    ctx->esp_saved= 0;
-    ctx->ebx      = 0;
-    ctx->edx      = 0;
-    ctx->ecx      = 0;
-    ctx->eax      = 0;
-    ctx->int_no   = 0;
-    ctx->err_code = 0;
-    ctx->eip      = 0;              // caller sets this to the entry point
-    ctx->cs       = 0x08;           // kernel code segment
-    ctx->eflags   = 0x00000202u;    // IF=1, reserved bit 1
-    ctx->useresp  = 0;
-    ctx->ss       = 0;
+    for (uint32_t i = 0; i < sizeof(cpu_context_t); i++)
+        ((uint8_t *)&p->context)[i] = 0;
+
+    p->context.cs     = 0x08;           // kernel code segment
+    p->context.eflags = 0x00000202u;    // IF=1 + reserved bit 1
+    p->context.ds     = 0x10;
+    p->context.es     = 0x10;
+    p->context.fs     = 0x10;
+    p->context.gs     = 0x10;
 
     // kernel stack
     p->kstack_base = kstack;                                    // memory allocation pointer
     p->kstack_top  = (uint32_t)kstack + KSTACK_SIZE;            // initial stack pointer
     p->esp0        = p->kstack_top;                             // value to load into TSS for transitions
 
-    // address space
-    p->page_directory = 0;
+    p->esp_kernel  = 0;
 
-    // priority
-    if (priority > PROC_PRIO_IDLE) priority = PROC_PRIO_IDLE;   // prevents invalid priority values
+    p->page_directory = 0; 
+
+    if (priority > PROC_PRIO_IDLE) priority = PROC_PRIO_IDLE;
     p->priority      = priority;
     p->base_priority = priority;
 
-    // time-slice: higher priority gets a longer quantum
     uint32_t tslice = PROC_TIMESLICE_DEFAULT;
-    if (priority < PROC_PRIO_NORMAL)
+    if      (priority < PROC_PRIO_NORMAL)
         tslice = PROC_TIMESLICE_DEFAULT + (PROC_PRIO_NORMAL - priority) / 2u;
     else if (priority > PROC_PRIO_NORMAL)
         tslice = PROC_TIMESLICE_DEFAULT - (priority - PROC_PRIO_NORMAL) / 5u;
@@ -152,18 +137,57 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
     p->timeslice_len = tslice;
     p->timeslice     = tslice;
 
-    // accounting
     p->ticks_total     = 0;
     p->ticks_scheduled = 0;
     p->tick_last_run   = 0;
     p->tick_created    = timer_get_ticks();
     p->wakeup_tick     = 0;
 
-    // logging
-    kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=%p\n",
+    kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=0x%p\n",
             (uint32_t)pid, p->name, (uint32_t)priority, tslice, (uint32_t)kstack);
 
     return p;
+    
+}
+
+void proc_init_frame(pcb_t *p, uint32_t entry_point) {
+
+    if (!p || !p->kstack_top) {
+        kprintf("PROC: proc_init_frame — invalid PCB\n");
+        return;
+    }
+
+    uint32_t *sp = (uint32_t *)p->kstack_top;
+
+    // CPU-pushed
+    *--sp = 0x00000202u;                                                        // eflags  (IF=1, reserved bit 1)
+    *--sp = 0x08;                                                               // cs      (kernel code segment)
+    *--sp = entry_point;                                                        // eip
+
+    // stub metadata
+    *--sp = 0;                                                                  // err_code
+    *--sp = 0;                                                                  // int_no
+
+    // pusha restores in order: edi, esi, ebp, esp, ebx, edx, ecx, eax
+    *--sp = 0;                                                                  // eax
+    *--sp = 0;                                                                  // ecx
+    *--sp = 0;                                                                  // edx
+    *--sp = 0;                                                                  // ebx
+    *--sp = 0;                                                                  // esp_saved (popa ignores this)
+    *--sp = 0;                                                                  // ebp
+    *--sp = 0;                                                                  // esi
+    *--sp = 0;                                                                  // edi
+
+    // segment registers - popped in order: gs, fs, es, ds
+    *--sp = 0x10;                                                               // ds
+    *--sp = 0x10;                                                               // es
+    *--sp = 0x10;                                                               // fs
+    *--sp = 0x10;                                                               // gs  <- esp_kernel points here
+
+    p->esp_kernel = (uint32_t)sp;
+
+    kprintf("PROC: [%u] \"%s\" frame @ 0x%p  eip=0x%p\n",
+    (uint32_t)p->pid, p->name, p->esp_kernel, entry_point);
 }
 
 // transition EMBRYO -> READY
@@ -199,6 +223,7 @@ void proc_destroy(pcb_t *p) {
         p->kstack_base = 0;
         p->kstack_top  = 0;
         p->esp0        = 0;
+        p->esp_kernel  = 0;
     }
 
     pid_free(p->pid);
@@ -259,6 +284,7 @@ void proc_dump(const pcb_t *p) {
     kprintf("  |  timeslice    = %u / %u ticks\n", p->timeslice, p->timeslice_len);
     kprintf("  |  kstack_base  = %p  top = %p\n", (uint32_t)p->kstack_base, p->kstack_top);
     kprintf("  |  esp0         = %p\n",     p->esp0);
+    kprintf("  |  esp_kernel  = 0x%p\n",    p->esp_kernel);
     kprintf("  |  eip          = %p  eflags = %p\n", p->context.eip, p->context.eflags);
     kprintf("  |  ticks_total  = %u  scheduled = %ux\n", p->ticks_total, p->ticks_scheduled);
     kprintf("  |  created tick = %u\n",     p->tick_created);
@@ -285,8 +311,6 @@ void proc_dump_all(void) {
             count++;
         }
     }
-
     if (count == 0) kprintf("  (empty)\n");
-
     kprintf("PROC: total active: %u\n\n", count);
 }

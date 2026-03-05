@@ -23,7 +23,7 @@ typedef enum {
     VGA_COLOUR_WHITE         = 15,
 } vga_colour_t;
 
-void terminal_initialize(void);
+void terminal_init(void);
 void terminal_setcolour(uint8_t colour);
 void terminal_putchar(char c);
 void terminal_write(const char *data, size_t size);

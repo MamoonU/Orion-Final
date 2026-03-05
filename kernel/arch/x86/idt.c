@@ -1,4 +1,5 @@
 #include "idt.h"
+#include "irq.h"
 #include "kprintf.h"
 #include "panic.h"
 
@@ -30,21 +31,21 @@ extern void irq15();
 static struct idt_entry idt[256];           // from idt.h
 static struct idt_ptr idtp;
 
-
 // Load IDT (assembly)
-static inline void lidt(struct idt_ptr *idtp) {         //load idt pointer
+static inline void lidt(struct idt_ptr *idtp) {                 //load idt pointer
     asm volatile ("lidt (%0)" : : "r"(idtp));
 }
 
 static void idt_set_gate(uint8_t num, uint32_t base) {          //set idt gate
     idt[num].base_low  = base & 0xFFFF;
-    idt[num].selector  = 0x08;        // Kernel code segment
+    idt[num].selector  = 0x08;                                  // Kernel code segment
     idt[num].zero      = 0;
-    idt[num].flags     = 0x8E;        // Present, ring 0, 32-bit interrupt gate
+    idt[num].flags     = 0x8E;                                  // Present, ring 0, 32-bit interrupt gate
     idt[num].base_high = (base >> 16) & 0xFFFF;
 }
 
 void idt_init(void) {                       //initialize idt
+
     idtp.limit = sizeof(idt) - 1;
     idtp.base  = (uint32_t)&idt;
 
@@ -54,10 +55,10 @@ void idt_init(void) {                       //initialize idt
     }
 
     // CPU exceptions needed
-    idt_set_gate(0,  (uint32_t)isr0);               // Divide by zero
-    idt_set_gate(6,  (uint32_t)isr6);        // Invalid opcode
-    idt_set_gate(8,  (uint32_t)isr8);    // Double fault
-    idt_set_gate(13, (uint32_t)isr13);          // General protection fault
+    idt_set_gate(0,  (uint32_t)isr0);       // Divide by zero
+    idt_set_gate(6,  (uint32_t)isr6);       // Invalid opcode
+    idt_set_gate(8,  (uint32_t)isr8);       // Double fault
+    idt_set_gate(13, (uint32_t)isr13);      // General protection fault
     idt_set_gate(14, (uint32_t)isr14);      // Page fault
 
     // Hardware IRQs (32 - 47)
@@ -83,24 +84,22 @@ void idt_init(void) {                       //initialize idt
 }
 
 // C exception handler
-void isr_handler(uint32_t int_no, uint32_t err_code __attribute__((unused))) {
+void isr_handler(regs_t *r) {
+
     kprintf("\n=== CPU EXCEPTION ===\n");
 
-    switch (int_no) {
+    switch (r->int_no) {
         case 0:  kprintf("Divide by Zero\n"); break;
         case 6:  kprintf("Invalid Opcode\n"); break;
         case 8:  kprintf("Double Fault\n"); break;
         case 13: kprintf("General Protection Fault\n"); break;
-        case 14:
-            kprintf("Page Fault\n");
+        case 14: {
             uint32_t fault_addr;
-            asm volatile ("mov %%cr2, %0" : "=r"(fault_addr));      //cr2 = page fault address
-            kprintf("Fault address captured\n");
+            asm volatile ("mov %%cr2, %0" : "=r"(fault_addr));
+            kprintf("Page Fault at 0x%p  err=0x%x\n", fault_addr, r->err_code);
             break;
-        default:
-            kprintf("Unknown CPU Exception\n");
-            break;
+        }
+        default: kprintf("Unknown Exception %u\n", r->int_no); break;
     }
-
     panic("Unhandled CPU exception");
 }
