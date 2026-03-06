@@ -5,6 +5,20 @@
 #include "sched.h"
 #include "vga.h"
 #include "kprintf.h"
+#include "vmm.h"
+#include "fd.h"
+
+// user pointer validation
+static int syscall_validate_ptr(const void *ptr, uint32_t len) {
+
+    if (!ptr || !len) return 0;
+
+    pcb_t *p = sched_current();
+    if (!p || !p->page_directory) return 0;
+
+    // user_only=0: kernel-mode processes dont have VMM_USER set yet
+    return vmm_range_mapped(p->page_directory, (uint32_t)ptr, len, 0);      // return 1 if the range (ptr, ptr+len) is fully mapped in the calling
+}
 
 // SYS_YIELD (0): voluntarily give up the CPU
 static int32_t sys_yield(regs_t *r) {
