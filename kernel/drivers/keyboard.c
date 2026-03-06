@@ -2,8 +2,7 @@
 #include "ioport.h"
 #include "irq.h"
 
-extern void serial_write(const char *s);        //UART
-extern void serial_putchar(char c);
+#include "serial.h"
 
 // US QWERTY scancode (UNSHIFTED)
 static const char scancode_normal[128] = {

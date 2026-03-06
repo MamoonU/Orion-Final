@@ -3,12 +3,11 @@
 #include "vmm.h"
 #include "pmm.h"
 
-extern void serial_write(const char *s);
-extern void print_uint32_hex(uint32_t v);
-extern void print_uint32_dec(uint32_t v);
-extern void panic(const char *msg);
-extern void enable_paging();                                            // from paging.asm
-extern void tlb_flush_page();                                           // from paging.asm
+#include "kprintf.h"
+#include "panic.h"
+
+extern void enable_paging(uint32_t pd_phys);                            // from paging.asm
+extern void tlb_flush_page(uint32_t virt);                              // from paging.asm
 
 // physical address of page directory (= virtual address)
 static uint32_t *page_directory = 0;
@@ -27,7 +26,7 @@ static uint32_t *create_table(uint32_t virt, uint32_t flags) {
 
     uint32_t pt_phys = pmm_alloc_frame();                                       // allocate zeroed 4KB frame for new PT
     if (pt_phys == 0) {
-        serial_write("VMM: FATAL — out of physical memory for page table \n");
+        kprintf("VMM: FATAL — out of physical memory for page table \n");
         return 0;
     }
 
@@ -109,7 +108,7 @@ int vmm_is_mapped(uint32_t virt) {
 
 void vmm_init(void) {
 
-    serial_write("VMM: Initialising virtual memory manager \n");
+    kprintf("VMM: Initialising virtual memory manager \n");
 
     // allocate & zero page directory
     uint32_t pd_phys = pmm_alloc_frame();                                       // pd = 4KB frame
@@ -122,7 +121,7 @@ void vmm_init(void) {
         page_directory[i] = 0;
 
     // identity mapping first 4MB
-    serial_write("VMM: Identity mapping first 4MB (kernel + VGA + low memory)\n");
+    kprintf("VMM: Identity mapping first 4MB (kernel + VGA + low memory)\n");
 
     uint32_t pt0_phys = pmm_alloc_frame();                                      // allocate first page table
     if (pt0_phys == 0)
@@ -137,16 +136,11 @@ void vmm_init(void) {
     // install page table -> PD[0]
     page_directory[0] = pt0_phys | VMM_KERNEL_RW;
 
-    serial_write("VMM: Loading CR3 and enabling paging\n");
+    kprintf("VMM: Loading CR3 and enabling paging\n");
     enable_paging(pd_phys);
-    serial_write("VMM: Paging enabled\n");
+    kprintf("VMM: Paging enabled\n");
 
-    serial_write("VMM: Page directory @ ");
-    print_uint32_hex(pd_phys);
-    serial_write("  |  Page table 0 @ ");
-    print_uint32_hex(pt0_phys);
-    serial_write("\n");
-    serial_write("VMM: Ready\n");
-    serial_write("\n");
+    kprintf("VMM: Page directory @ %p  |  Page table 0 @ %p\n", pd_phys, pt0_phys);
+    kprintf("VMM: Ready\n\n");
 
 }

@@ -5,7 +5,6 @@
 ; CS reload achieved with far jump
 
 global gdt_flush
-
 gdt_flush:
 
     mov eax, [esp+4]        ; pointer -> gdt pointer address
@@ -23,4 +22,10 @@ gdt_flush:
     jmp 0x08:.flush         ; far jump code selector = hidden descriptor caches = pain and suffering
 
 .flush:
+    ret
+
+global tss_flush
+tss_flush:
+    mov ax, 0x28            ; TSS selector: GDT entry 5 = 5*8 = 40 = 0x28
+    ltr ax                  ; load task register
     ret

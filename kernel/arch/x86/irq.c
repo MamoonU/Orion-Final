@@ -1,7 +1,6 @@
 #include "irq.h"
 #include "ioport.h"
-
-extern void serial_write(const char *s);
+#include "kprintf.h"
 
 static irq_handler_t irq_handlers[16] = {0};  //IRQ handler table
 
@@ -62,6 +61,6 @@ void irq_handler(regs_t *r) {       //irq dispatcher
 void IRQ_init() {
 
 	PIC_remap();                            // remap PIC called
-	serial_write("IRQ: Initialized\n");
+	kprintf("IRQ: Initialized\n");
 
 }

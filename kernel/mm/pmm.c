@@ -16,40 +16,10 @@ static uint32_t pmm_total_frames = 0;   // memory detected from mmap
 static uint32_t pmm_used_frames = 0;    // reserved frames
 static uint32_t pmm_alloc_search = 1;         // Start searching here (skip frame 0)
 
-extern void serial_write(const char *s);        // UART
-extern void printk(const char *s);              // VGA
+#include "kprintf.h"
+#include "serial.h"
 
-// integer printer
-void print_uint32_hex(uint32_t v) {
 
-    char buf[11];
-    buf[0] = '0'; buf[1] = 'x';
-
-    for (int i = 9; i >= 2; i--) {
-        int nibble = v & 0xF;
-        buf[i] = (nibble < 10) ? ('0' + nibble) : ('a' + nibble - 10);
-        v >>= 4;
-    }
-
-    buf[10] = '\0';
-    serial_write(buf);
-}
-
-// decimal printer
-void print_uint32_dec(uint32_t v) {
-
-    char buf[12];
-    int i = 10;
-    buf[11] = '\0';
-    if (v == 0) { serial_write("0"); return; }
-
-    while (v && i >= 0) {
-        buf[i--] = '0' + (v % 10);
-        v /= 10;
-    }
-
-    serial_write(&buf[i + 1]);
-}
 
 // mark physical address range reserved
 static void pmm_mark_region_reserved(uint64_t base, uint64_t len) {
@@ -99,8 +69,7 @@ static void pmm_mark_region_available(uint64_t base, uint64_t len) {
 // initialise physical memory manager
 void pmm_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel_phys_end) {
 
-    serial_write("\n");
-    serial_write("PMM: Initialising physical memory manager\n");
+    kprintf("\nPMM: Initialising physical memory manager\n");
 
     for (uint32_t i = 0; i < PMM_BITMAP_SIZE; i++)                              // mark all frames reserved (deny-by-default memory policy)
         bitmap[i] = 0xFFFFFFFF;
@@ -110,10 +79,10 @@ void pmm_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel
 
     if (!(mbi->flags & MULTIBOOT_FLAG_MMAP)) {      // if no GRUB mmap
 
-        serial_write("PMM: FATAL ERROR — GRUB did not provide a memory map\n");
+        kprintf("PMM: FATAL ERROR — GRUB did not provide a memory map\n");
 
         if (mbi->flags & MULTIBOOT_FLAG_MEM) {                                  // fallback assuming memory up to mem_upper is free
-            serial_write("PMM: Falling back to mem_upper field\n");
+            kprintf("PMM: Falling back to mem_upper field\n");
 
             uint64_t mem_bytes = (uint64_t)(mbi->mem_upper) * 1024;
             pmm_mark_region_available(0x100000, mem_bytes);                          // Free above 1MB
@@ -121,28 +90,31 @@ void pmm_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel
 
     } else {                                        // parse GRUB mmap
 
-        serial_write("PMM: Parsing GRUB memory map:\n");
+        kprintf("PMM: Parsing GRUB memory map:\n");
 
         multiboot_mmap_entry_t *entry = (multiboot_mmap_entry_t *)(uint32_t)mbi->mmap_addr;
         uint32_t mmap_end = mbi->mmap_addr + mbi->mmap_length;
 
-        serial_write("  [ HIGH BASE: LOW BASE  +   LENGTH  ]\n");
+        kprintf("  [ HIGH BASE: LOW BASE  +   LENGTH  ]\n");
 
         while ((uint32_t)entry < mmap_end) {
 
-            // print each entry for debugging                       //=================== example output ===================
-            serial_write("  [");                                    //
-            print_uint32_hex((uint32_t)(entry->addr >> 32));        // mmap entry = base:0x0 len:0x9FC00 type:1
-            serial_write(":");                                      // size = 639KB | RAM = 0-639KB | type = available
-            print_uint32_hex((uint32_t)entry->addr);                // 
-            serial_write(" + ");                                    // mmap entry = base:0x9FC00 len:0x400 type:2
-            print_uint32_hex((uint32_t)entry->len);                 // size = 1KB | RAM = 639KB-640KB | type = unavailable
-            serial_write("] type=");                                //
-            print_uint32_dec(entry->type);                          //======================================================
+            // print each entry for debugging
+            //=================== example output ===================
+            // mmap entry = base:0x0 len:0x9FC00 type:1
+            // size = 639KB | RAM = 0-639KB | type = available
+            // mmap entry = base:0x9FC00 len:0x400 type:2
+            // size = 1KB | RAM = 639KB-640KB | type = unavailable
+            //======================================================
+            kprintf("  [%08x:%08x + %08x] type=%u",
+                    (uint32_t)(entry->addr >> 32),
+                    (uint32_t)entry->addr,
+                    (uint32_t)entry->len,
+                    entry->type);
 
             if (entry->type == MULTIBOOT_MEMORY_AVAILABLE) {    // if memory available
 
-                serial_write(" (available)\n");
+                kprintf(" (available)\n");
 
                 if (entry->addr < 0x100000000ULL) {
                     uint64_t top = entry->addr + entry->len;
@@ -152,18 +124,15 @@ void pmm_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel
                 }
 
             } else {                                            // else memory reserved
-                serial_write(" (reserved)\n");
+                kprintf(" (reserved)\n");
             }
 
             entry = (multiboot_mmap_entry_t *)((uint32_t)entry + entry->size + sizeof(uint32_t));
         }
     }
 
-    serial_write("PMM: Reserving kernel image ");               // reserve kernel image
-    print_uint32_hex(kernel_phys_start);
-    serial_write(" - ");
-    print_uint32_hex(kernel_phys_end);
-    serial_write("\n");
+    kprintf("PMM: Reserving kernel image %p - %p\n",           // reserve kernel image
+            kernel_phys_start, kernel_phys_end);
     pmm_mark_region_reserved(kernel_phys_start, kernel_phys_end - kernel_phys_start);
 
     if (!bitmap_test(0)) {                                      // reserve frame 0 explicitly
@@ -172,12 +141,8 @@ void pmm_init(multiboot_info_t *mbi, uint32_t kernel_phys_start, uint32_t kernel
     }
 
     uint32_t free_mb = (pmm_total_frames * PAGE_SIZE) / (1024 * 1024);          // print total frames (usable) and free MB
-    serial_write("PMM: Ready. Total usable frames: ");
-    print_uint32_dec(pmm_total_frames);
-    serial_write(" (~");
-    print_uint32_dec(free_mb);
-    serial_write(" MB free)\n");
-    serial_write("\n");
+    kprintf("PMM: Ready. Total usable frames: %u (~%u MB free)\n\n",
+            pmm_total_frames, free_mb);
 
 }
 
@@ -219,7 +184,7 @@ uint32_t pmm_alloc_frame(void) {
             }
         }
     }
-serial_write("PMM: Out of memory \n");
+kprintf("PMM: Out of memory \n");
 return 0;
 }
 
@@ -230,9 +195,7 @@ void pmm_free_frame(uint32_t phys_addr) {
     if (frame == 0) return;                                                             // protect frame 0
 
     if (!bitmap_test(frame)) {                                          // detect double free errors
-        serial_write("PMM: WARNING — double-free of frame ");
-        print_uint32_hex(phys_addr);
-        serial_write("\n");
+        kprintf("PMM: WARNING — double-free of frame %p\n", phys_addr);
         return;
     }
 

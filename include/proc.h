@@ -19,6 +19,7 @@
 #ifndef PROC_H
 #define PROC_H
 
+#include "irq.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -47,41 +48,7 @@ typedef enum {
 // Default time quantum in PIT ticks
 #define PROC_TIMESLICE_DEFAULT  10          // 10 ticks = 100 ms
 
-
-// layout of the interrupt stack frame constructed by irq.asm / isr.asm.
-typedef struct cpu_context {
-
-    // segment registers (pushed by stub after pusha)
-    uint32_t gs;
-    uint32_t fs;
-    uint32_t es;
-    uint32_t ds;
-
-    // general-purpose registers (pusha - edi = lowest addr)
-    uint32_t edi;
-    uint32_t esi;
-    uint32_t ebp;
-    uint32_t esp_saved;                                             // esp at the instant of pusha (not the interrupt esp)
-    uint32_t ebx;
-    uint32_t edx;
-    uint32_t ecx;
-    uint32_t eax;
-
-    // interrupt metadata (pushed by stub)
-    uint32_t int_no;
-    uint32_t err_code;
-
-    // pushed automatically by the CPU on interrupt
-    uint32_t eip;                                                   // instruction to return to
-    uint32_t cs;                                                    // code segment at time of interrupt
-    uint32_t eflags;                                                // processor flags (IF, DF, etc.)
-
-    // pushed by CPU on privilege-level change (ring 3 -> ring 0)
-    uint32_t useresp;                                               // user stack pointer  (ring 3 processes only)
-    uint32_t ss;                                                    // user stack segment  (ring 3 processes only)
-
-} __attribute__((packed)) cpu_context_t;
-
+typedef regs_t cpu_context_t;               // alias for regs_t (same interrupt stack frame)
 
 typedef uint16_t pid_t;                             // process id type (16 bit cleaner)
 
@@ -102,7 +69,8 @@ typedef struct pcb {
 
     // CPU context
     cpu_context_t   context;
-    uint32_t        esp0;                       // loaded into TSS.esp0
+    uint32_t        esp_kernel;                       // loaded into TSS.esp0
+    uint32_t        esp0;
 
     // kernel stack
     uint8_t        *kstack_base;
@@ -113,15 +81,15 @@ typedef struct pcb {
 
     // future scheduling
 
-    // scheduler — priority
+    // scheduler - priority
     uint8_t         priority;
     uint8_t         base_priority;
 
-    // scheduler — time-slice
+    // scheduler - time-slice
     uint32_t        timeslice_len;
     uint32_t        timeslice;
 
-    // scheduler — accounting
+    // scheduler - accounting
     uint32_t        ticks_total;
     uint32_t        ticks_scheduled;
     uint32_t        tick_last_run;
@@ -130,6 +98,9 @@ typedef struct pcb {
     // blocking / sleep
     uint32_t        wakeup_tick;
 
+    // parent-child coordination
+    pid_t           wait_for_pid;           // PID blocked waiting for (PID_INVALID = any child)
+    uint8_t         waiting;                // 1 = blocked inside proc_wait
 
 } pcb_t;
 
@@ -143,11 +114,21 @@ pcb_t *proc_create(const char *name, uint8_t priority);
 void   proc_set_ready(pcb_t *p);
 void   proc_destroy(pcb_t *p);
 
+void   proc_init_frame(pcb_t *p, uint32_t entry_point);         // fake irq-stub register frame for scheduler
+
 pcb_t *proc_get(pid_t pid);                                     // lookup pid
 const char *proc_state_name(proc_state_t s);
 
-void   proc_set_priority(pcb_t *p, uint8_t priority);           // dynamic schedulings
+void   proc_set_priority(pcb_t *p, uint8_t priority);           // dynamic scheduling
 void   proc_set_timeslice(pcb_t *p, uint32_t ticks);
+
+void   proc_exit(int32_t exit_code);                            // running -> zombie
+pid_t  proc_wait(pid_t pid, int32_t *out_code);                 // running -> blocked -> destroy
+void   proc_sleep(uint32_t ticks);                              // running -> blocked (until proc_wake)
+void   proc_wake(pcb_t *p);                                     // blocked -> ready
+
+pid_t  proc_fork(uint32_t child_entry);                         // new process (child of current)
+int    proc_exec(pcb_t *p, uint32_t new_entry);                 // replace stopped process' excecution -> new entry point
 
 void   proc_dump(const pcb_t *p);                               // debugging
 void   proc_dump_all(void);

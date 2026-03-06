@@ -23,10 +23,8 @@
 #include "vmm.h"
 #include "pmm.h"
 
-extern void serial_write(const char *s);
-extern void print_uint32_hex(uint32_t v);
-extern void print_uint32_dec(uint32_t v);
-extern void panic(const char *msg);
+#include "kprintf.h"
+#include "panic.h"
 
 #define WSIZE 4u                            // word = header/footer size (bytes)
 #define DWSIZE 8u                           // double word - alignment unit
@@ -76,14 +74,14 @@ static int ensure_mapped(uint32_t end) {
     while (heap_virt_mapped < end) {
 
         if (heap_virt_mapped + PAGE_SIZE > HEAP_MAX) {                                  // kernel heap hit ceiling
-            serial_write("KHEAP: FATAL — virtual heap ceiling reached\n");
+            kprintf("KHEAP: FATAL — virtual heap ceiling reached\n");
             return -1;
         }
 
         uint32_t phys = pmm_alloc_frame();
 
         if (!phys) {
-            serial_write("KHEAP: FATAL — PMM out of physical frames\n");                // out of physical memory
+            kprintf("KHEAP: FATAL — PMM out of physical frames\n");                // out of physical memory
             return -1;
         }
 
@@ -180,7 +178,7 @@ static void place(char *bp, size_t asize) {
 // initialise k_heap
 void kheap_init(void) {
 
-    serial_write("KHEAP: Initialising kernel heap\n");
+    kprintf("KHEAP: Initialising kernel heap\n");
 
     uint32_t phys = pmm_alloc_frame();                                          // physical frame from PMM
     if (!phys)
@@ -207,11 +205,11 @@ void kheap_init(void) {
         panic("KHEAP: init — extend_heap failed (PMM OOM?)");
 
     // output kheap info
-    serial_write("KHEAP: Base       @ ");  print_uint32_hex(HEAP_START); serial_write("\n");
-    serial_write("KHEAP: First free @ ");  print_uint32_hex((uint32_t)bp); serial_write("\n");
-    serial_write("KHEAP: Initial    = ");  print_uint32_dec(init);  serial_write(" bytes free\n");
-    serial_write("KHEAP: Ceiling    @ ");  print_uint32_hex(HEAP_MAX); serial_write("\n");
-    serial_write("KHEAP: Ready\n\n");
+    kprintf("KHEAP: Base       @ %p\n", (uint32_t)HEAP_START);
+    kprintf("KHEAP: First free @ %p\n", (uint32_t)bp);
+    kprintf("KHEAP: Initial    = %u bytes free\n", (uint32_t)init);
+    kprintf("KHEAP: Ceiling    @ %p\n", (uint32_t)HEAP_MAX);
+    kprintf("KHEAP: Ready\n\n");
 
 }
 
@@ -239,7 +237,7 @@ void *kmalloc(size_t size) {
     char *bp = extend_heap(extsize);                                    // extend heap by extsize
 
     if (!bp) {
-        serial_write("KHEAP: kmalloc — out of memory\n");
+        kprintf("KHEAP: kmalloc — out of memory\n");
         return 0;
     }
 
@@ -291,10 +289,8 @@ void kfree_aligned(void *ptr) {
 
 void kheap_dump(void) {
 
-    serial_write("KHEAP: ────────────── dump ──────────────\n");
-    serial_write("KHEAP:  heap_brk @ ");
-    print_uint32_hex(heap_brk);                                                 // print epilogue header
-    serial_write("\n");
+    kprintf("KHEAP: ────────────── dump ──────────────\n");
+    kprintf("KHEAP:  heap_brk @ %p\n", heap_brk);                              // print epilogue header
 
     uint32_t idx  = 0;                                                          // block number
     size_t   used = 0;                                                          // allocated blocks (bytes)
@@ -305,20 +301,17 @@ void kheap_dump(void) {
         uint32_t sz    = GET_SIZE(HDRP(bp));                                    // block size
         uint32_t alloc = GET_ALLOC(HDRP(bp));                                   // allocation bit
 
-        serial_write("KHEAP:  [");
-        print_uint32_dec(idx);                                                  // block number
-        serial_write("] @ ");
-        print_uint32_hex((uint32_t)bp);                                         // payload address
-        serial_write("  size=");
-        print_uint32_dec(sz);                                                   // size
-        serial_write(alloc ? "  ALLOCATED\n" : "  FREE\n");                     // allocated?
+        kprintf("KHEAP:  [%u] @ %p  size=%u  %s\n",
+                idx,                                                            // block number
+                (uint32_t)bp,                                                   // payload address
+                sz,                                                             // size
+                alloc ? "ALLOCATED" : "FREE");                                  // allocated?
 
         if (alloc) used += sz; else free += sz;                                 // accumulate full block sizes
     }
 
-    serial_write("KHEAP:  used="); print_uint32_dec((uint32_t)used);
-    serial_write("  free=");       print_uint32_dec((uint32_t)free);
-    serial_write("  total=");      print_uint32_dec((uint32_t)(used + free));
-    serial_write("\nKHEAP: ────────────────────────────────────\n\n");
+    kprintf("KHEAP:  used=%u  free=%u  total=%u\n",
+            (uint32_t)used, (uint32_t)free, (uint32_t)(used + free));
+    kprintf("KHEAP: ────────────────────────────────────\n\n");
 
 }
