@@ -13,7 +13,8 @@ ASM_OBJS := \
 	kernel/arch/x86/gdt_asm.o  \
 	kernel/arch/x86/isr.o      \
 	kernel/arch/x86/irq.o      \
-	kernel/arch/x86/paging.o
+	kernel/arch/x86/paging.o   \
+	kernel/arch/x86/syscall.o
 
 C_OBJS := \
 	kernel/arch/x86/gdt.o      \
@@ -25,6 +26,9 @@ C_OBJS := \
 	kernel/mm/kheap.o           \
 	kernel/proc/proc.o          \
 	kernel/proc/sched.o         \
+	kernel/proc/fork.o          \
+	kernel/proc/exec.o          \
+	kernel/syscall/syscall.o    \
 	kernel/drivers/serial.o     \
 	kernel/drivers/vga.o        \
 	kernel/drivers/timer.o      \
@@ -60,6 +64,9 @@ kernel/arch/x86/irq.o:     kernel/arch/x86/irq.asm
 	@$(ASM) $(ASMFLAGS) $< -o $@
 
 kernel/arch/x86/paging.o:  kernel/arch/x86/paging.asm
+	@$(ASM) $(ASMFLAGS) $< -o $@
+
+kernel/arch/x86/syscall.o: kernel/arch/x86/syscall.asm
 	@$(ASM) $(ASMFLAGS) $< -o $@
 
 kernel/arch/x86/irq_c.o: kernel/arch/x86/irq.c

@@ -15,6 +15,9 @@ pcb_t *sched_current(void);                                     // return curren
 
 void sched_tick(void);                                          // signal a timer tick
 
+void sched_yield(void);                                         // voluntarily give up the CPU
+void sched_force_switch(void);                                  // set tick + zero timeslice -> next irq switches
+
 void sched_dump(void);                                          // dump scheduler state to serial
 
 uint32_t sched_switch_esp(uint32_t current_esp);                // switch_process : no switch ? switch 

@@ -1,4 +1,4 @@
-// libk/string.c - freestanding string and memory functions
+// string.c - freestanding string and memory functions
 
 #include "string.h"
 #include <stdint.h>

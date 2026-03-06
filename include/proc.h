@@ -98,6 +98,9 @@ typedef struct pcb {
     // blocking / sleep
     uint32_t        wakeup_tick;
 
+    // parent-child coordination
+    pid_t           wait_for_pid;           // PID blocked waiting for (PID_INVALID = any child)
+    uint8_t         waiting;                // 1 = blocked inside proc_wait
 
 } pcb_t;
 
@@ -116,8 +119,16 @@ void   proc_init_frame(pcb_t *p, uint32_t entry_point);         // fake irq-stub
 pcb_t *proc_get(pid_t pid);                                     // lookup pid
 const char *proc_state_name(proc_state_t s);
 
-void   proc_set_priority(pcb_t *p, uint8_t priority);           // dynamic schedulings
+void   proc_set_priority(pcb_t *p, uint8_t priority);           // dynamic scheduling
 void   proc_set_timeslice(pcb_t *p, uint32_t ticks);
+
+void   proc_exit(int32_t exit_code);                            // running -> zombie
+pid_t  proc_wait(pid_t pid, int32_t *out_code);                 // running -> blocked -> destroy
+void   proc_sleep(uint32_t ticks);                              // running -> blocked (until proc_wake)
+void   proc_wake(pcb_t *p);                                     // blocked -> ready
+
+pid_t  proc_fork(uint32_t child_entry);                         // new process (child of current)
+int    proc_exec(pcb_t *p, uint32_t new_entry);                 // replace stopped process' excecution -> new entry point
 
 void   proc_dump(const pcb_t *p);                               // debugging
 void   proc_dump_all(void);

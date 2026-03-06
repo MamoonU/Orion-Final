@@ -6,6 +6,7 @@
 #include "kprintf.h"
 #include "panic.h"
 #include "string.h"
+#include "sched.h"
 
 static pcb_t proc_table[MAX_PROCS];                                                                     // fixed size array
 
@@ -143,9 +144,10 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
     p->tick_created    = timer_get_ticks();
     p->wakeup_tick     = 0;
 
-    kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=0x%p\n",
-            (uint32_t)pid, p->name, (uint32_t)priority, tslice, (uint32_t)kstack);
+    p->wait_for_pid    = PID_INVALID;
+    p->waiting         = 0;
 
+    kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=0x%p\n", (uint32_t)pid, p->name, (uint32_t)priority, tslice, (uint32_t)kstack);
     return p;
     
 }
@@ -313,4 +315,98 @@ void proc_dump_all(void) {
     }
     if (count == 0) kprintf("  (empty)\n");
     kprintf("PROC: total active: %u\n\n", count);
+}
+
+void proc_exit(int32_t exit_code) {
+
+    pcb_t *p = sched_current();
+    if (!p) { kprintf("PROC: proc_exit — no current process\n"); return; }
+
+    kprintf("PROC: [%u] \"%s\" exiting (code=%d)\n",
+            (uint32_t)p->pid, p->name, (int)exit_code);
+
+    p->exit_code = exit_code;
+    p->state     = PROC_ZOMBIE;
+
+    if (p->ppid != PID_KERNEL && p->ppid != PID_INVALID) {
+        pcb_t *parent = proc_get(p->ppid);
+        if (parent && parent->waiting) {
+            if (parent->wait_for_pid == PID_INVALID || parent->wait_for_pid == p->pid) {
+                kprintf("PROC: waking parent [%u] \"%s\"\n",
+                        (uint32_t)parent->pid, parent->name);
+                proc_wake(parent);
+            }
+        }
+    }
+
+    sched_remove(p);
+    sched_yield();
+}
+
+pid_t proc_wait(pid_t pid, int32_t *out_code) {
+
+    pcb_t *self = sched_current();
+    if (!self) return PID_INVALID;
+
+    kprintf("PROC: [%u] \"%s\" waiting for %s\n",
+            (uint32_t)self->pid, self->name,
+            (pid == PID_INVALID) ? "any child" : "specific child");
+
+    while (1) {
+        for (pid_t i = 0; i < MAX_PROCS; i++) {
+            pcb_t *child = proc_get(i);
+            if (!child) continue;
+            if (child->ppid != self->pid) continue;
+            if (pid != PID_INVALID && child->pid != pid) continue;
+            if (child->state == PROC_ZOMBIE) {
+                if (out_code) *out_code = child->exit_code;
+                pid_t cpid = child->pid;
+                kprintf("PROC: [%u] \"%s\" reaped child [%u] (code=%d)\n",
+                        (uint32_t)self->pid, self->name,
+                        (uint32_t)cpid, (int)child->exit_code);
+                proc_destroy(child);
+                return cpid;
+            }
+        }
+
+        self->wait_for_pid = pid;
+        self->waiting      = 1;
+        self->wakeup_tick  = 0;
+        self->state        = PROC_BLOCKED;
+        sched_remove(self);
+        sched_yield();
+        self->waiting = 0;
+    }
+}
+
+void proc_sleep(uint32_t ticks) {
+
+    pcb_t *p = sched_current();
+    if (!p || ticks == 0) return;
+
+    p->wakeup_tick = timer_get_ticks() + ticks;
+    p->state       = PROC_BLOCKED;
+
+    kprintf("PROC: [%u] \"%s\" sleeping for %u ticks (wake at %u)\n",
+            (uint32_t)p->pid, p->name, ticks, p->wakeup_tick);
+
+    sched_remove(p);
+    sched_yield();
+}
+
+void proc_wake(pcb_t *p) {
+
+    if (!p) return;
+
+    if (p->state != PROC_BLOCKED) {
+        kprintf("PROC: proc_wake — [%u] not BLOCKED (state=%s), ignoring\n",
+                (uint32_t)p->pid, proc_state_name(p->state));
+        return;
+    }
+
+    p->wakeup_tick = 0;
+    p->state       = PROC_READY;
+    sched_add(p);
+
+    kprintf("PROC: [%u] \"%s\" woken -> READY\n", (uint32_t)p->pid, p->name);
 }

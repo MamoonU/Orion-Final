@@ -5,6 +5,7 @@
 #include "tss.h"
 #include "kprintf.h"
 #include "timer.h"
+#include "syscall.h"
 
 #define SCHED_MAX_PROCS MAX_PROCS
 
@@ -59,7 +60,18 @@ void sched_remove(pcb_t *p) {
 
 // Called from timer_handler() on every PIT tick.
 void sched_tick(void) {
+
     tick_flag = 1;
+
+    uint32_t now = timer_get_ticks();
+    for (pid_t i = 0; i < MAX_PROCS; i++) {
+        pcb_t *p = proc_get(i);
+        if (!p) continue;
+        if (p->state != PROC_BLOCKED) continue;
+        if (p->wakeup_tick == 0) continue;
+        if (p->wakeup_tick <= now)
+            proc_wake(p);
+    }
 }
 
 // return current process
@@ -112,7 +124,9 @@ uint32_t sched_switch_esp(uint32_t current_esp) {
     current_proc->esp_kernel = current_esp;
     current_proc->ticks_total += current_proc->timeslice_len;
     current_proc->tick_last_run = timer_get_ticks();
-    current_proc->state = PROC_READY;
+    if (current_proc->state == PROC_RUNNING) {
+        current_proc->state = PROC_READY;
+    }
 
     // 2. advance the current index (simple round-robin tie-break)
     current_idx = next_idx;
@@ -200,4 +214,15 @@ void sched_dump(void) {
                 p->timeslice);
     }
     kprintf("\n");
+}
+
+void sched_force_switch(void) {
+    tick_flag = 1;
+    if (current_proc)
+        current_proc->timeslice = 0;
+}
+
+void sched_yield(void) {
+    sched_force_switch();
+    asm volatile("int $0x80" : : "a"(SYS_YIELD) : "memory");
 }

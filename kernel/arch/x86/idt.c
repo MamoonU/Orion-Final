@@ -2,9 +2,12 @@
 #include "irq.h"
 #include "kprintf.h"
 #include "panic.h"
+#include "syscall.h"
+
+extern void syscall_entry(void);        // syscall.asm
 
 // External ASM functions from isr.asm
-extern void isr0();                    // Divide by zero
+extern void isr0();                     // Divide by zero
 extern void isr6();                     // Invalid opcode
 extern void isr8();                     // Double fault
 extern void isr13();                    // General protection fault
@@ -41,6 +44,15 @@ static void idt_set_gate(uint8_t num, uint32_t base) {          //set idt gate
     idt[num].selector  = 0x08;                                  // Kernel code segment
     idt[num].zero      = 0;
     idt[num].flags     = 0x8E;                                  // Present, ring 0, 32-bit interrupt gate
+    idt[num].base_high = (base >> 16) & 0xFFFF;
+}
+
+// DPL=3 allows ring-3 to invoke; IF stays on (trap gate, not interrupt gate)
+static void idt_set_trap_gate(uint8_t num, uint32_t base) {
+    idt[num].base_low  = base & 0xFFFF;
+    idt[num].selector  = 0x08;
+    idt[num].zero      = 0;
+    idt[num].flags     = 0xEF;          // Present, DPL=3, 32-bit trap gate
     idt[num].base_high = (base >> 16) & 0xFFFF;
 }
 
@@ -102,4 +114,12 @@ void isr_handler(regs_t *r) {
         default: kprintf("Unknown Exception %u\n", r->int_no); break;
     }
     panic("Unhandled CPU exception");
+}
+
+void idt_install_syscall(void) {
+
+    idt_set_trap_gate(0x80, (uint32_t)syscall_entry);
+    lidt(&idtp);
+    kprintf("IDT: int 0x80 (syscall) gate installed\n");
+    
 }

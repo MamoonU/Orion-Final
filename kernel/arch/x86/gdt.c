@@ -52,7 +52,8 @@ void gdt_init(void) {
 }
 
 void gdt_install_tss(uint32_t base, uint32_t limit) {
-
+    
+    gdtp.limit = (sizeof(struct gdt_entry) * 6) - 1;        // extend GDTR to cover TSS entry (GDT[5])
     gdt_set_gate(5, base, limit, 0x89, 0x00);
     gdt_flush((uint32_t)&gdtp);                             // reload GDTR so CPU sees the new entry
 

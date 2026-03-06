@@ -17,6 +17,8 @@
 #include "proc.h"
 #include "timer.h"
 #include "keyboard.h"
+#include "sched.h"
+#include "syscall.h"
 
 #if defined(__linux__)
     #error "Must be compiled with a cross-compiler"
@@ -27,14 +29,20 @@
 extern uint8_t kernel_start;
 extern uint8_t kernel_end;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// kernel_main
+// ─────────────────────────────────────────────────────────────────────────────
+
 void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
 
     terminal_init();
     serial_init();
-    
+
     idt_init();
     IRQ_init();
+
     gdt_init();
+    tss_init();
 
     kassert(multiboot_magic == MULTIBOOT_MAGIC);
 
@@ -44,6 +52,9 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
 
     proc_init();
 
+    syscall_init();
+    idt_install_syscall();
+
     timer_init(100);
     kprintf("Timer: PIT initialized at 100Hz\n");
     keyboard_init();
@@ -51,6 +62,6 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     asm volatile ("sti");
     sched_start();
 
-    terminal_writestring("Orion: online");
+    terminal_writestring("Orion: Online");
 
 }
