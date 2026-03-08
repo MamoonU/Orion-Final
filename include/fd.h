@@ -5,32 +5,29 @@
 #ifndef FD_H
 #define FD_H
 
+#include "vfs.h"
 #include <stdint.h>
-#include <stddef.h>
 
 #define FD_MAX      16          // max open fds per process
 
-// fd type tags
-#define FD_NONE     0           // slot is free
-#define FD_STDIN    1           // keyboard input
-#define FD_STDOUT   2           // VGA terminal
-#define FD_STDERR   3           // serial port
+// open /dev/stdin, /dev/stdout, /dev/stderr as fd 0, 1, 2
+void fd_table_init    (file_t **table);
 
-typedef struct {
-    uint8_t  type;              // FD_* tag above
-    uint8_t  flags;             // reserved for O_CLOEXEC etc.
-} fd_entry_t;
+// close a single descriptor
+void fd_close         (file_t **table, int fd);
 
+// vfs_close all open entries (called from proc_exit)
+void fd_table_close_all(file_t **table);
 
-void fd_table_init(fd_entry_t *table);                                      // initialise fd table for a new process (open stdin/stdout/stderr)
+// fork: share every open file_t (increments each refcount)
+void fd_table_clone   (file_t **src, file_t **dst);
 
-void fd_close(fd_entry_t *table, int fd);                                   // close one entry
-
-void fd_table_clone(const fd_entry_t *src, fd_entry_t *dst);                // clone parents fd table into childs (used by proc_fork)
+// install a file_t at the lowest free slot; returns fd number or -1
+int  fd_install       (file_t **table, file_t *f);
 
 // low-level read/write routed through the fd type
 // return bytes transferred, or -1 on error
-int fd_read (fd_entry_t *table, int fd,       void *buf, uint32_t len);
-int fd_write(fd_entry_t *table, int fd, const void *buf, uint32_t len);
+int fd_read (file_t **table, int fd,       void *buf, uint32_t len);
+int fd_write(file_t **table, int fd, const void *buf, uint32_t len);
 
 #endif

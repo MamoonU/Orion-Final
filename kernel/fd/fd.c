@@ -1,104 +1,72 @@
 // fd.c - File Descriptor Layer
 
 #include "fd.h"
-#include "keyboard.h"
-#include "vga.h"
-#include "serial.h"
+#include "vfs.h"
+#include "devfs.h"
 #include "kprintf.h"
-#include <stddef.h>
 
 // initialise descriptor table
-void fd_table_init(fd_entry_t *table) {
+void fd_table_init(file_t **table) {
 
-    for (int i = 0; i < FD_MAX; i++) {                                      // clear table
-        table[i].type  = FD_NONE;
-        table[i].flags = 0;
-    }
+    for (int i = 0; i < FD_MAX; i++)
+        table[i] = 0;
 
-    table[0].type = FD_STDIN;                                               // install standard streams
-    table[1].type = FD_STDOUT;
-    table[2].type = FD_STDERR;
+    table[0] = vfs_open_vnode(devfs_stdin_vnode(),  O_RDONLY);              // fd 0 = stdin
+    table[1] = vfs_open_vnode(devfs_stdout_vnode(), O_WRONLY);              // fd 1 = stdout
+    table[2] = vfs_open_vnode(devfs_stderr_vnode(), O_WRONLY);              // fd 2 = stderr
 }
 
 // close descriptor
-void fd_close(fd_entry_t *table, int fd) {
+void fd_close(file_t **table, int fd) {
 
-    if (fd < 0 || fd >= FD_MAX) return;
-    table[fd].type  = FD_NONE;                                              // clear entry
-    table[fd].flags = 0;
+    if (fd < 0 || fd >= FD_MAX || !table[fd]) return;
+    vfs_close(table[fd]);
+    table[fd] = 0;
+}
+
+// close all descriptors
+void fd_table_close_all(file_t **table) {
+
+    for (int i = 0; i < FD_MAX; i++) {
+        if (table[i]) {
+            vfs_close(table[i]);
+            table[i] = 0;
+        }
+    }
 }
 
 // used for fork()
-void fd_table_clone(const fd_entry_t *src, fd_entry_t *dst) {
-
-    for (int i = 0; i < FD_MAX; i++)                                        // copy entries across
-        dst[i] = src[i];
-}
-
-// allocate new descriptor
-int fd_alloc(fd_entry_t *table, uint8_t type) {
+void fd_table_clone(file_t **src, file_t **dst) {
 
     for (int i = 0; i < FD_MAX; i++) {
-        if (table[i].type == FD_NONE) {                                     // search free slot
-            table[i].type  = type;                                          // assign
-            table[i].flags = 0;
+        dst[i] = src[i];
+        if (dst[i]) dst[i]->refcount++;
+    }
+}
+
+// install file_t at the lowest free slot
+int fd_install(file_t **table, file_t *f) {
+
+    for (int i = 0; i < FD_MAX; i++) {
+        if (!table[i]) {
+            table[i] = f;
             return i;
         }
     }
-    return -1;                                                              // table full
+    return -1;
 }
 
-// read from descriptor
-int fd_read(fd_entry_t *table, int fd, void *buf, uint32_t len) {
+// file descriptor read
+int fd_read(file_t **table, int fd, void *buf, uint32_t len) {
 
-    if (fd < 0 || fd >= FD_MAX || !buf || !len) return -1;
-    if (table[fd].type == FD_NONE) return -1;
-
-    switch (table[fd].type) {                                               // switch on descriptor type
-
-        case FD_STDIN: {                                                    // read from keyboard
-            char *out = (char *)buf;
-            uint32_t n = 0;
-            while (n < len) {
-                if (!keyboard_has_char()) break;                            // non-blocking: return what's available
-                out[n++] = keyboard_getchar();
-            }
-            return (int)n;
-        }
-
-        case FD_STDOUT:
-        case FD_STDERR:
-            return -1;                                  // write-only
-
-        default:
-            return -1;
-    }
+    if (fd < 0 || fd >= FD_MAX || !table[fd]) return -1;
+    return vfs_read(table[fd], buf, len);
 }
 
-// write to descriptor
-int fd_write(fd_entry_t *table, int fd, const void *buf, uint32_t len) {
+// file descriptor write
+int fd_write(file_t **table, int fd, const void *buf, uint32_t len) {
 
-    if (fd < 0 || fd >= FD_MAX || !buf || !len) return -1;
-    if (table[fd].type == FD_NONE) return -1;
-
-    const char *src = (const char *)buf;
-
-    switch (table[fd].type) {
-
-        case FD_STDOUT:                                                     // write to VGA
-            for (uint32_t i = 0; i < len; i++)
-                terminal_putchar(src[i]);
-            return (int)len;
-
-        case FD_STDERR:                                                     // write to serial
-            for (uint32_t i = 0; i < len; i++)
-                serial_putchar(src[i]);
-            return (int)len;
-
-        case FD_STDIN:
-            return -1;                                  // read-only
-
-        default:
-            return -1;
-    }
+    if (fd < 0 || fd >= FD_MAX || !table[fd]) return -1;
+    return vfs_write(table[fd], (void *)buf, len);
 }
+
