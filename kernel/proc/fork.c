@@ -3,6 +3,7 @@
 #include "proc.h"
 #include "sched.h"
 #include "kprintf.h"
+#include "fd.h"
 
 // create new process
 pid_t proc_fork(uint32_t child_entry) {
