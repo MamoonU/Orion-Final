@@ -29,9 +29,10 @@
 extern uint8_t kernel_start;
 extern uint8_t kernel_end;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// kernel_main
-// ─────────────────────────────────────────────────────────────────────────────
+static void idle_process(void) {
+    while (1)
+        asm volatile ("hlt");
+}
 
 void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
 
@@ -59,9 +60,16 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     kprintf("Timer: PIT initialized at 100Hz\n");
     keyboard_init();
 
+    // idle process: runs when nothing else is ready
+    pcb_t *idle = proc_create("idle", PROC_PRIO_IDLE);
+    kassert(idle != 0);
+    proc_init_frame(idle, (uint32_t)idle_process);
+    proc_set_ready(idle);
+    sched_add(idle);
+
+    terminal_writestring("OrionOS: Online");
+
     asm volatile ("sti");
     sched_start();
-
-    terminal_writestring("Orion: Online");
-
+    
 }
