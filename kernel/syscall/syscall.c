@@ -7,6 +7,7 @@
 #include "kprintf.h"
 #include "vmm.h"
 #include "fd.h"
+#include "vfs.h"
 
 // user pointer validation
 static int syscall_validate_ptr(const void *ptr, uint32_t len) {
@@ -14,7 +15,8 @@ static int syscall_validate_ptr(const void *ptr, uint32_t len) {
     if (!ptr || !len) return 0;
 
     pcb_t *p = sched_current();
-    if (!p || !p->page_directory) return 0;
+    if (!p) return 0;
+    if (!p->page_directory) return 1;                                       // kernel process: implicitly trusted
 
     // user_only=0: kernel-mode processes dont have VMM_USER set yet
     return vmm_range_mapped(p->page_directory, (uint32_t)ptr, len, 0);      // return 1 if the range (ptr, ptr+len) is fully mapped in the calling
@@ -94,25 +96,34 @@ static int32_t sys_read(regs_t *r) {
 
 // SYS_OPEN (8): open a file by path
 static int32_t sys_open(regs_t *r) {
-    (void)r;
-    kprintf("SYSCALL: sys_open - not yet implemented (needs VFS)\n");
-    return -1;
+    const char *path  = (const char *)r->ebx;
+    int         flags = (int)r->ecx;
+
+    if (!syscall_validate_ptr(path, 1)) return -1;
+
+    pcb_t *p = sched_current();
+    if (!p) return -1;
+
+    file_t *f = vfs_open(path, flags);
+    if (!f) return -1;
+
+    int fd = fd_install(p->fd_table, f);
+    if (fd < 0) { vfs_close(f); return -1; }
+    return fd;
 }
 
 // SYS_CLOSE (9): close a file descriptor
 static int32_t sys_close(regs_t *r) {
     int fd = (int)r->ebx;                                                       // read fd
 
-    if (fd < 0 || fd >= FD_MAX) return -1;
-
     pcb_t *p = sched_current();                                                 // return current process
-    if (!p) return -1;
-
-    if (p->fd_table[fd].type == FD_NONE) return -1;                             // already closed
+    if (!p || fd < 0 || fd >= FD_MAX) return -1;
+    if (!p->fd_table[fd]) return -1;                                            // already closed
 
     fd_close(p->fd_table, fd);                                                  // close fd
     return 0;
 }
+
 
 typedef int32_t (*syscall_fn_t)(regs_t *);
 

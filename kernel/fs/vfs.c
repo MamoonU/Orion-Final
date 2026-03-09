@@ -128,7 +128,8 @@ vnode_t *vfs_resolve(const char *path) {
 
         uint32_t n = 0;                                                 // extract next name component
         while (*rest && *rest != '/' && n < VFS_NAME_MAX - 1)
-            component[n++] = *rest++; component[n] = '\0';
+            component[n++] = *rest++;
+            component[n] = '\0';
 
         while (*rest == '/') rest++;                                    // skip slashes between components
 

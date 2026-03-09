@@ -14,6 +14,9 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "kheap.h"
+#include "vfs.h"
+#include "ramfs.h"
+#include "devfs.h"
 #include "proc.h"
 #include "timer.h"
 #include "keyboard.h"
@@ -29,6 +32,7 @@
 extern uint8_t kernel_start;
 extern uint8_t kernel_end;
 
+// idle process for scheduler
 static void idle_process(void) {
     while (1)
         asm volatile ("hlt");
@@ -51,6 +55,10 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     vmm_init();
     kheap_init();
 
+    vfs_init();
+    ramfs_init();
+    devfs_init();
+
     proc_init();
 
     syscall_init();
@@ -60,7 +68,7 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     kprintf("Timer: PIT initialized at 100Hz\n");
     keyboard_init();
 
-    // idle process: runs when nothing else is ready
+    // idle process
     pcb_t *idle = proc_create("idle", PROC_PRIO_IDLE);
     kassert(idle != 0);
     proc_init_frame(idle, (uint32_t)idle_process);

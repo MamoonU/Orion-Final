@@ -102,7 +102,7 @@ typedef struct pcb {
     uint8_t         waiting;                // 1 = blocked inside proc_wait
 
     // file descriptors
-    file_t          fd_table[FD_MAX];
+    file_t          *fd_table[FD_MAX];
 
 } pcb_t;
 
