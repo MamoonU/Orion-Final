@@ -32,7 +32,6 @@
 extern uint8_t kernel_start;
 extern uint8_t kernel_end;
 
-// idle process for scheduler
 static void idle_process(void) {
     while (1)
         asm volatile ("hlt");
@@ -65,19 +64,16 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     idt_install_syscall();
 
     timer_init(100);
-    kprintf("Timer: PIT initialized at 100Hz\n");
     keyboard_init();
 
-    // idle process
     pcb_t *idle = proc_create("idle", PROC_PRIO_IDLE);
     kassert(idle != 0);
     proc_init_frame(idle, (uint32_t)idle_process);
     proc_set_ready(idle);
     sched_add(idle);
 
-    terminal_writestring("OrionOS: Online");
+    kprintf("OrionOS: Online\n");
 
     asm volatile ("sti");
     sched_start();
-    
 }

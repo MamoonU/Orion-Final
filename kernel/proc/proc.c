@@ -232,6 +232,7 @@ void proc_destroy(pcb_t *p) {
         p->esp_kernel  = 0;
     }
 
+    fd_table_close_all(p->fd_table);
     pid_free(p->pid);
 
     pid_t saved_pid = p->pid;

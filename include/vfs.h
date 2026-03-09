@@ -18,6 +18,7 @@
 #define VNODE_FILE  1           // regular file
 #define VNODE_DIR   2           // directory
 #define VNODE_DEV   3           // character device
+#define VNODE_PIPE  4           // anonymous pipe
 
 // forward type declarations
 typedef struct vnode   vnode_t;
@@ -88,7 +89,7 @@ file_t *vfs_open_vnode(vnode_t *v, int flags);
 void vfs_close(file_t *f);
 
 // read/write from/to open file
-int  vfs_read (file_t *f,       void *buf, uint32_t len);
+int vfs_read (file_t *f,       void *buf, uint32_t len);
 int vfs_write(file_t *f, const void *buf, uint32_t len);
 
 // create a directory at path

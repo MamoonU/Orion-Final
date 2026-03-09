@@ -179,6 +179,7 @@ static int pipe_close_read(vnode_t *v) {
     kfree(end);                                                     // free pipe_end_t
     v->data = NULL;
     pipe_maybe_free(pipe);                                          // release pipe_t
+    kfree(v);
     return 0;
 
 }
@@ -196,6 +197,7 @@ static int pipe_close_write(vnode_t *v) {
     kfree(end);                                                     // free pipe_end_t
     v->data = NULL;
     pipe_maybe_free(pipe);                                          // release pipe_t
+    kfree(v);
     return 0;
 
 }

@@ -2,6 +2,7 @@
 
 #include "vga.h"
 #include "string.h"
+#include "kprintf.h"
 
 #define VGA_WIDTH   80
 #define VGA_HEIGHT  25

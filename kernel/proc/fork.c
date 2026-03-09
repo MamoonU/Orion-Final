@@ -23,7 +23,11 @@ pid_t proc_fork(uint32_t child_entry) {
     }
 
     // wire parent-child relationship
-    if (parent) child->ppid = parent->pid;
+    if (parent) {
+        child->ppid = parent->pid;
+        fd_table_close_all(child->fd_table);                        // discard the fresh stdin/out/err
+        fd_table_clone(parent->fd_table, child->fd_table);          // inherit parent's fds
+    }
 
     proc_init_frame(child, child_entry);                                            // build child stack frame
     proc_set_ready(child);                                                          // child = runnable

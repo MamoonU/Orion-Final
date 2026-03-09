@@ -27,10 +27,12 @@ C_OBJS := \
 	kernel/fs/vfs.o             \
 	kernel/fs/ramfs.o           \
 	kernel/fs/devfs.o           \
+	kernel/fs/pipe.o            \
 	kernel/proc/proc.o          \
 	kernel/proc/sched.o         \
 	kernel/proc/fork.o          \
 	kernel/proc/exec.o          \
+	kernel/proc/elf.o           \
 	kernel/proc/fd.o            \
 	kernel/syscall/syscall.o    \
 	kernel/drivers/serial.o     \

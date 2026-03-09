@@ -8,6 +8,8 @@
 #include "serial.h"
 #include "kprintf.h"
 #include "kheap.h"
+#include "proc.h"
+#include "sched.h"
 
 // stdin: keyboard read-only
 static int kbd_read(vnode_t *v, void *buf, uint32_t len, uint32_t offset) {
@@ -15,6 +17,17 @@ static int kbd_read(vnode_t *v, void *buf, uint32_t len, uint32_t offset) {
     (void)v; (void)offset;                              // ignore vnode & offset
     char    *out = (char *)buf;                         // output buffer
     uint32_t n   = 0;                                   // character counter
+
+    // block until at least one character is available
+    while (!keyboard_has_char()) {
+        pcb_t *self = sched_current();
+        if (!self) return 0;
+        self->state = PROC_BLOCKED;
+        sched_remove(self);
+        // store PID so the IRQ handler can wake us
+        keyboard_set_waiter((uint16_t)self->pid);
+        sched_yield();
+    }
 
     while (n < len && keyboard_has_char())              // read from kb buffer
         out[n++] = keyboard_getchar();
