@@ -19,4 +19,6 @@ char keyboard_getchar(void);
 
 int keyboard_has_char(void);
 
+void keyboard_set_waiter(uint16_t pid); 
+
 #endif

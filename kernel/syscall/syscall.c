@@ -7,6 +7,9 @@
 #include "kprintf.h"
 #include "vmm.h"
 #include "fd.h"
+#include "vfs.h"
+#include "pipe.h"
+#include "elf.h"
 
 // user pointer validation
 static int syscall_validate_ptr(const void *ptr, uint32_t len) {
@@ -14,7 +17,8 @@ static int syscall_validate_ptr(const void *ptr, uint32_t len) {
     if (!ptr || !len) return 0;
 
     pcb_t *p = sched_current();
-    if (!p || !p->page_directory) return 0;
+    if (!p) return 0;
+    if (!p->page_directory) return 1;                                       // kernel process: implicitly trusted
 
     // user_only=0: kernel-mode processes dont have VMM_USER set yet
     return vmm_range_mapped(p->page_directory, (uint32_t)ptr, len, 0);      // return 1 if the range (ptr, ptr+len) is fully mapped in the calling
@@ -94,24 +98,113 @@ static int32_t sys_read(regs_t *r) {
 
 // SYS_OPEN (8): open a file by path
 static int32_t sys_open(regs_t *r) {
-    (void)r;
-    kprintf("SYSCALL: sys_open - not yet implemented (needs VFS)\n");
-    return -1;
+    const char *path  = (const char *)r->ebx;
+    int         flags = (int)r->ecx;
+
+    if (!syscall_validate_ptr(path, 1)) return -1;
+
+    pcb_t *p = sched_current();
+    if (!p) return -1;
+
+    file_t *f = vfs_open(path, flags);
+    if (!f) return -1;
+
+    int fd = fd_install(p->fd_table, f);
+    if (fd < 0) { vfs_close(f); return -1; }
+    return fd;
 }
 
 // SYS_CLOSE (9): close a file descriptor
 static int32_t sys_close(regs_t *r) {
     int fd = (int)r->ebx;                                                       // read fd
 
-    if (fd < 0 || fd >= FD_MAX) return -1;
-
     pcb_t *p = sched_current();                                                 // return current process
-    if (!p) return -1;
-
-    if (p->fd_table[fd].type == FD_NONE) return -1;                             // already closed
+    if (!p || fd < 0 || fd >= FD_MAX) return -1;
+    if (!p->fd_table[fd]) return -1;                                            // already closed
 
     fd_close(p->fd_table, fd);                                                  // close fd
     return 0;
+}
+
+// SYS_PIPE (10): create an anonymous pipe
+static int32_t sys_pipe(regs_t *r) {
+    int *pipefd = (int *)r->ebx;
+
+    if (!syscall_validate_ptr(pipefd, 2 * sizeof(int))) return -1;
+
+    pcb_t *p = sched_current();
+    if (!p) return -1;
+
+    return pipe_create(p->fd_table, pipefd);
+}
+
+// SYS_DUP2 (11): duplicate oldfd onto newfd
+
+static int32_t sys_dup2(regs_t *r) {                            // closes newfd if open -> install oldfd's file_t at newfd
+    int oldfd = (int)r->ebx;
+    int newfd = (int)r->ecx;
+
+    pcb_t *p = sched_current();
+    if (!p) return -1;
+    if (oldfd < 0 || oldfd >= FD_MAX) return -1;
+    if (newfd < 0 || newfd >= FD_MAX) return -1;
+    if (!p->fd_table[oldfd]) return -1;
+
+    if (oldfd == newfd) return newfd;                           // POSIX: dup2 to self is a no-op
+
+    if (p->fd_table[newfd]) fd_close(p->fd_table, newfd);       // close newfd if currently open
+
+    p->fd_table[newfd] = p->fd_table[oldfd];                    // share the file_t
+    p->fd_table[newfd]->refcount++;                             // bump refcount 
+
+    return newfd;
+}
+
+// SYS_EXECVE (12): replace the calling process's image with ELF binary
+static int32_t sys_execve(regs_t *r) {
+    const char *path = (const char *)r->ebx;
+
+    if (!syscall_validate_ptr(path, 1)) return -1;
+
+    uint32_t entry = elf_load(path);
+    if (!entry) {
+        kprintf("EXECVE: failed to load \"%s\"\n", path);
+        return -1;
+    }
+
+    pcb_t *p = sched_current();
+    if (!p) return -1;
+
+    kprintf("EXECVE: [%u] \"%s\" -> ELF entry 0x%p\n",
+            (uint32_t)p->pid, path, entry);
+
+    // Redirect the iret target to the new binary's entry point.
+    // Clear all general-purpose registers so the new image starts clean.
+    r->eip       = entry;
+    r->eax       = 0;
+    r->ebx       = 0;
+    r->ecx       = 0;
+    r->edx       = 0;
+    r->esi       = 0;
+    r->edi       = 0;
+    r->ebp       = 0;
+    r->eflags    = 0x00000202u;
+
+    // Reset scheduler accounting so the new image gets a full timeslice
+    p->timeslice       = p->timeslice_len;
+    p->ticks_total     = 0;
+    p->ticks_scheduled = 0;
+
+    return 0;
+}
+
+// SYS_WAIT (13)
+static int32_t sys_wait(regs_t *r) {
+    pid_t    pid      = (pid_t)(int32_t)r->ebx;
+    int32_t *out_code = (int32_t *)r->ecx;
+    if (out_code && !syscall_validate_ptr(out_code, sizeof(int32_t))) return -1;
+    pid_t result = proc_wait(pid, out_code);
+    return (result == PID_INVALID) ? -1 : (int32_t)result;
 }
 
 typedef int32_t (*syscall_fn_t)(regs_t *);
@@ -128,6 +221,10 @@ static syscall_fn_t syscall_table[SYSCALL_COUNT] = {
     [SYS_READ]   = sys_read,
     [SYS_OPEN]   = sys_open,
     [SYS_CLOSE]  = sys_close,
+    [SYS_PIPE]   = sys_pipe,
+    [SYS_DUP2]   = sys_dup2,
+    [SYS_EXECVE] = sys_execve,
+    [SYS_WAIT]   = sys_wait,
 };
 
 void syscall_dispatch(regs_t *r) {

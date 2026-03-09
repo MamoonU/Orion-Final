@@ -7,6 +7,7 @@
 #include "panic.h"
 #include "string.h"
 #include "sched.h"
+#include "fd.h"
 
 static pcb_t proc_table[MAX_PROCS];                                                                     // fixed size array
 
@@ -147,6 +148,9 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
     p->wait_for_pid    = PID_INVALID;
     p->waiting         = 0;
 
+    // open stdin(0), stdout(1), stderr(2) for this process
+    fd_table_init(p->fd_table);
+
     kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=0x%p\n", (uint32_t)pid, p->name, (uint32_t)priority, tslice, (uint32_t)kstack);
     return p;
     
@@ -228,6 +232,7 @@ void proc_destroy(pcb_t *p) {
         p->esp_kernel  = 0;
     }
 
+    fd_table_close_all(p->fd_table);
     pid_free(p->pid);
 
     pid_t saved_pid = p->pid;

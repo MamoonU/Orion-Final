@@ -17,8 +17,12 @@
 #define SYS_READ        7       // EBX = fd, ECX = buf, EDX = len   - read bytes from fd
 #define SYS_OPEN        8       // EBX = path, ECX = flags          - open file (stub until VFS)
 #define SYS_CLOSE       9       // EBX = fd                         - close file descriptor
+#define SYS_PIPE        10      // EBX = &pipefd[2]                 - create anonymous pipe
+#define SYS_DUP2        11      // EBX = oldfd, ECX = newfd         - duplicate file descriptor
+#define SYS_EXECVE      12      // EBX = path                       - exec ELF binary in place
+#define SYS_WAIT        13      // EBX = pid (-1 = any), ECX = &exit_code
 
-#define SYSCALL_COUNT   10
+#define SYSCALL_COUNT   14
 
 // kernel-side entry point (registered in IDT as int 0x80)
 void syscall_dispatch(regs_t *r);

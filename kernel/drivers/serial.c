@@ -5,6 +5,7 @@
 
 #include "serial.h"
 #include "ioport.h"
+#include "kprintf.h"
 
 #define COM1_PORT 0x3F8
 

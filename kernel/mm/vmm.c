@@ -185,14 +185,22 @@ void vmm_destroy_address_space(uint32_t pd_phys) {
 
     // free user-space page tables (skip PDE[0] = kernel)
     for (int i = 1; i < 1024; i++) {
-        if (pd[i] & VMM_PRESENT) {
-            uint32_t pt_phys = pd[i] & VMM_ADDR_MASK;
-            pmm_free_frame(pt_phys);
+        if (!(pd[i] & VMM_PRESENT)) continue;
+
+        uint32_t  pt_phys = pd[i] & VMM_ADDR_MASK;
+        uint32_t *pt      = (uint32_t *)pt_phys;
+
+        // free every present page frame inside this table
+        for (int j = 0; j < 1024; j++) {
+            if (pt[j] & VMM_PRESENT) {
+                pmm_free_frame(pt[j] & VMM_ADDR_MASK);
+            }
         }
+
+        pmm_free_frame(pt_phys);    // free table
+        kprintf("VMM: address space 0x%p destroyed\n", pd_phys);
     }
 
-    pmm_free_frame(pd_phys);
-    kprintf("VMM: address space 0x%p destroyed\n", pd_phys);
 }
 
 // context switch: called by scheduler on every context switch

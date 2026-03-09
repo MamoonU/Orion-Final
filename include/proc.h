@@ -80,8 +80,6 @@ typedef struct pcb {
     // address space
     uint32_t       *page_directory;             // (NULL = kernel PD)
 
-    // future scheduling
-
     // scheduler - priority
     uint8_t         priority;
     uint8_t         base_priority;
@@ -103,7 +101,8 @@ typedef struct pcb {
     pid_t           wait_for_pid;           // PID blocked waiting for (PID_INVALID = any child)
     uint8_t         waiting;                // 1 = blocked inside proc_wait
 
-    fd_entry_t      fd_table[FD_MAX];
+    // file descriptors
+    file_t          *fd_table[FD_MAX];
 
 } pcb_t;
 

@@ -1,6 +1,8 @@
 #include "keyboard.h"
 #include "ioport.h"
 #include "irq.h"
+#include "serial.h"
+#include "proc.h"
 
 #include "serial.h"
 
@@ -57,6 +59,11 @@ static const char scancode_shifted[128] = {
 static char     kb_buf[KB_BUFFER_SIZE];
 static uint32_t kb_read  = 0;
 static uint32_t kb_write = 0;
+static uint16_t kb_waiter_pid = 0xFFFF;   // sentinel
+
+void keyboard_set_waiter(uint16_t pid) {
+    kb_waiter_pid = pid;
+} 
 
 static inline void buf_push(char c) {
 
@@ -119,6 +126,11 @@ void keyboard_handler(regs_t *r) {
     if (c) {                                                                    // if printable
         buf_push(c);                                                            // push char to ring buffer
         serial_putchar(c);                                                      // send to serial for debugging
+        if (kb_waiter_pid != 0xFFFF) {
+            pcb_t *w = proc_get(kb_waiter_pid);
+            kb_waiter_pid = 0xFFFF;
+            if (w) proc_wake(w);
+        }
     }
 
 }

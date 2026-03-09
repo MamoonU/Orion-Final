@@ -24,11 +24,16 @@ C_OBJS := \
 	kernel/mm/pmm.o             \
 	kernel/mm/vmm.o             \
 	kernel/mm/kheap.o           \
+	kernel/fs/vfs.o             \
+	kernel/fs/ramfs.o           \
+	kernel/fs/devfs.o           \
+	kernel/fs/pipe.o            \
 	kernel/proc/proc.o          \
 	kernel/proc/sched.o         \
 	kernel/proc/fork.o          \
 	kernel/proc/exec.o          \
-	kernel/fd/fd.o				\
+	kernel/proc/elf.o           \
+	kernel/proc/fd.o            \
 	kernel/syscall/syscall.o    \
 	kernel/drivers/serial.o     \
 	kernel/drivers/vga.o        \
