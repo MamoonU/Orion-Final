@@ -35,6 +35,7 @@ C_OBJS := \
 	kernel/proc/elf.o           \
 	kernel/proc/fd.o            \
 	kernel/syscall/syscall.o    \
+	kernel/shell/shell.o        \
 	kernel/drivers/serial.o     \
 	kernel/drivers/vga.o        \
 	kernel/drivers/timer.o      \
