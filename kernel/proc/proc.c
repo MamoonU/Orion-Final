@@ -75,14 +75,12 @@ void pid_free(pid_t pid) {
 pcb_t *proc_create(const char *name, uint8_t priority) {
 
     pid_t pid = pid_alloc();                                                    // alloc pid
-
     if (pid == PID_INVALID) {
         kprintf("PROC: proc_create — no free PID\n");
         return 0;
     }
 
     pcb_t *p = &proc_table[pid];                                                // return pcb slot
-
     if (p->state != PROC_UNUSED) {
         kprintf("PROC: proc_create — FATAL: slot not UNUSED\n");
         pid_free(pid);
@@ -90,7 +88,6 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
     }
 
     uint8_t *kstack = (uint8_t *)kmalloc_aligned(KSTACK_SIZE);                  // allocate kernel stack
-
     if (!kstack) {
         kprintf("PROC: proc_create — OOM allocating kernel stack\n");
         pid_free(pid);
@@ -150,6 +147,11 @@ pcb_t *proc_create(const char *name, uint8_t priority) {
 
     // open stdin(0), stdout(1), stderr(2) for this process
     fd_table_init(p->fd_table);
+
+    // filesystem context: inherit from parent when forking, else default to root
+    strncpy(p->cwd_path, "/", VFS_PATH_MAX - 1);
+    p->cwd_path[VFS_PATH_MAX - 1] = '\0';
+    p->ns_root = 0;                         // NULL = global VFS; replaced per-process when namespaces land
 
     kprintf("PROC: created [%u] \"%s\" prio=%u quantum=%u kstack=0x%p\n", (uint32_t)pid, p->name, (uint32_t)priority, tslice, (uint32_t)kstack);
     return p;

@@ -4,6 +4,7 @@
 #include "sched.h"
 #include "kprintf.h"
 #include "fd.h"
+#include "string.h"
 
 // create new process
 pid_t proc_fork(uint32_t child_entry) {
@@ -27,6 +28,11 @@ pid_t proc_fork(uint32_t child_entry) {
         child->ppid = parent->pid;
         fd_table_close_all(child->fd_table);                        // discard the fresh stdin/out/err
         fd_table_clone(parent->fd_table, child->fd_table);          // inherit parent's fds
+ 
+        // inherit filesystem context
+        strncpy(child->cwd_path, parent->cwd_path, VFS_PATH_MAX - 1);
+        child->cwd_path[VFS_PATH_MAX - 1] = '\0';
+        child->ns_root = parent->ns_root;                           // shared namespace root for now
     }
 
     proc_init_frame(child, child_entry);                                            // build child stack frame
