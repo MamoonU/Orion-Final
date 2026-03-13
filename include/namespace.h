@@ -46,10 +46,10 @@ void  ns_ref  (ns_t *ns);          // increment refcount
 void  ns_unref(ns_t *ns);          // decrement refcount (refcount = 0 = free ns)
 
 // bind operation
-int ns_bind(ns_t **ns, vnode_t *vnode, const char *new_path, uint8_t flags);
+int ns_bind(ns_t **nsp, vnode_t *vnode, const char *new_path, uint8_t flags);
 
 // unbind operation
-int ns_unbind(ns_t **ns, const char *new_path);
+int ns_unbind(ns_t **nsp, const char *new_path);
 
 // path resolution 
 vnode_t *ns_resolve(ns_t *ns, const char *path);

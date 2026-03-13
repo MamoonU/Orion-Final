@@ -78,22 +78,117 @@ ns_t *ns_clone(const ns_t *src) {
 
 // increment refcount
 void  ns_ref  (ns_t *ns) {
-
+    if (ns) ns->refcount++;
 }
 
 // decrement refcount (refcount = 0 = free ns)
 void  ns_unref(ns_t *ns) {
 
+    if (!ns) return;
+    if (ns->refcount == 0) {                                                // prevent double free
+        kprintf("NS: ns_unref — WARNING: refcount already zero\n");
+        return;
+    }
+ 
+    ns->refcount--;                                                         // decrement
+    if (ns->refcount > 0) return;                                           // if still shared, do nothing
+ 
+    for (uint32_t i = 0; i < NS_BINDS_MAX; i++) {                           // release all vnode refs
+        if (ns->binds[i].active && ns->binds[i].vnode) {
+            vnode_unref(ns->binds[i].vnode);
+            ns->binds[i].vnode = 0;
+        }
+    }
+    kprintf("NS: freed namespace @ 0x%p\n", (uint32_t)ns);
+    kfree(ns);                                                              // free
+}
+
+// copy on bind
+static int ns_cow(ns_t **ns) {
+
+    if (!ns || !*ns) return -1;                     // validation
+    if ((*ns)->refcount <= 1) return 0;             // shared? check
+ 
+    ns_t *fresh = ns_clone(*ns);                    // clone ns
+    if (!fresh) return -1;
+ 
+    ns_unref(*ns);                                  // drop old reference
+    *ns = fresh;                                    // replace pointer
+    return 0;
+
 }
 
 // bind operation
-int ns_bind(ns_t **ns, vnode_t *vnode, const char *new_path, uint8_t flags) {
+int ns_bind(ns_t **nsp, vnode_t *vnode, const char *new_path, uint8_t flags) {
+ 
+    if (!nsp || !*nsp || !vnode || !new_path || new_path[0] != '/') return -1;          // validate inputs
+ 
+    if (ns_cow(nsp) < 0) return -1;                                                     // copy on write (save mutation)
+    ns_t *ns = *nsp;
+ 
+    if (flags == NS_BIND_REPLACE) {                                                     // flag = NS_BIND_REPLACE
 
+        for (uint32_t i = 0; i < NS_BINDS_MAX; i++) {                                   // for each bind
+            if (ns->binds[i].active && strcmp(ns->binds[i].new_path, new_path) == 0) {  // if path matches
+                vnode_unref(ns->binds[i].vnode);                                        // unref vnode
+                ns->binds[i].active = 0;
+                ns->binds[i].vnode  = 0;
+                ns->nbinds--;                                                           // deactivate entry
+            }
+        }
+    }
+ 
+    for (uint32_t i = 0; i < NS_BINDS_MAX; i++) {                                       // find a free slot
+ 
+        if (ns->binds[i].active) continue;                                              // if entry inactive
+ 
+        strncpy(ns->binds[i].new_path, new_path, VFS_PATH_MAX - 1);                     // use inactive entry
+        ns->binds[i].new_path[VFS_PATH_MAX - 1] = '\0';
+ 
+        // initialise entry
+        ns->binds[i].vnode  = vnode;
+        ns->binds[i].flags  = flags;
+        ns->binds[i].active = 1;
+        ns->binds[i].srv_fd = -1;                                                       // local vnode; 9P sets this
+ 
+        vnode_ref(vnode);                                                               // reference vnode
+        ns->nbinds++;                                                                   // update count
+ 
+        kprintf("NS: bind \"%s\" flags=%u (ns=0x%p, total=%u)\n", new_path, (uint32_t)flags, (uint32_t)ns, ns->nbinds);
+        return 0;
+    }
+    kprintf("NS: ns_bind — bind table full (max %u)\n", (uint32_t)NS_BINDS_MAX);
+    return -1;
 }
 
 // unbind operation
-int ns_unbind(ns_t **ns, const char *new_path) {
+int ns_unbind(ns_t **nsp, const char *new_path) {
 
+    if (!nsp || !*nsp || !new_path) return -1;                                          // validate inputs
+ 
+    if (ns_cow(nsp) < 0) return -1;                                                     // copy on bind
+    ns_t *ns = *nsp;
+ 
+    int removed = 0;
+ 
+    for (uint32_t i = 0; i < NS_BINDS_MAX; i++) {                                       // iterate table
+        if (!ns->binds[i].active) continue;
+        if (strcmp(ns->binds[i].new_path, new_path) != 0) continue;                     // if path matches
+ 
+        vnode_unref(ns->binds[i].vnode);                                                // unref vnode
+        ns->binds[i].active = 0;                                                        // active = 0
+        ns->binds[i].vnode  = 0;
+        ns->nbinds--;                                                                   // update count
+        removed++;
+    }
+ 
+    if (removed) {
+        kprintf("NS: unbind \"%s\" (%d entries removed)\n", new_path, removed);
+        return 0;
+    }
+
+    kprintf("NS: unbind \"%s\" — not found\n", new_path);
+    return -1;
 }
 
 // path resolution 
@@ -108,5 +203,5 @@ int ns_readdir(ns_t *ns, const char *dir_path, uint32_t index, char *name_out, u
 
 // debug
 void ns_dump(const ns_t *ns) {
-    
+
 }
