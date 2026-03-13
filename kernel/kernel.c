@@ -64,7 +64,7 @@ void kernel_main(uint32_t multiboot_magic, multiboot_info_t *mbi) {
     syscall_init();
     idt_install_syscall();
 
-    timer_init(100);
+    timer_init(100);        // 10 ms = 100hz
     keyboard_init();
 
     pcb_t *idle = proc_create("idle", PROC_PRIO_IDLE);
